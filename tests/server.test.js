@@ -20,5 +20,6 @@ describe('Crucible MCP Server', () => {
   it('should enforce draft: true mode for crucible_add_comment', () => {
     const code = fs.readFileSync(path.join(__dirname, '../index.js'), 'utf-8');
     expect(code).toContain('draft: true');
+    expect(code).not.toContain('draft: false');
   });
 });

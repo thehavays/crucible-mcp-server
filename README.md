@@ -87,6 +87,16 @@ Add a review comment or in-line file comment to a Crucible review. All comments 
   - `toLineRange` (string, optional): Line number or range in the new file revision (e.g., `42` or `40-45`).
   - `fromLineRange` (string, optional): Line number or range in the old file revision (e.g., `40`).
 
+### `crucible_add_comment`
+Add a review comment or an in-line file comment to an existing Crucible review.
+> **Note:** All comments are strictly created as drafts (`draft: true`) to ensure safe review and verification before publishing.
+- **Inputs:**
+  - `reviewId` (string, required): The ID of the review (e.g. 'CRU-BUTTERFLY-156').
+  - `message` (string, required): The text content of the comment.
+  - `reviewItemId` (string, optional): PermId of the review item/file (e.g. 'CFR-868035'). If omitted, a general review comment is posted.
+  - `lineRange` (string, optional): Line number or line range for an in-line comment (e.g. '25662' or '25660-25668').
+  - `revision` (string, optional): Commit/file revision string associated with the line range. Automatically resolved if omitted.
+
 ---
 
 ## Development & Contribution
