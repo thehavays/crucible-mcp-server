@@ -1,142 +1,211 @@
 # Git & GitHub Workflow Guidelines for Crucible MCP Server
 
+This document defines the version control, branching, and GitHub MCP conventions used in `crucible-mcp-server`.
+
 ---
 
-## ⚙️ Environment Variables (Context)
+## ⚙️ Environment & MCP Context
 
 * **GITHUB_USERNAME**: `thehavays`
-* **GITHUB_PROJECT_NAME**: `Crucible MCP Server`
-
----
-
-This document details the version control and GitHub conventions used in this project. Follow these guidelines to maintain a clean history and avoid build or deployment issues.
+* **REPOSITORY**: `crucible-mcp-server`
+* **REMOTE_URL**: `https://github.com/thehavays/crucible-mcp-server.git`
+* **MCP_SERVER**: `github`
 
 ---
 
 ## 🌿 Branching Strategy
 
-We use a standard branching structure with `dev` as the main integration branch. Both `main` and `dev` are **protected branches**:
+We use a standard two-tier branching structure with `dev` as the primary integration branch. Both `main` and `dev` are **protected branches**:
 
-1. **`dev` (Development Branch)**:
-   * This is the default branch for active development.
-   * All feature branches, bug fixes, and chores should be branched from `dev` and merged back into `dev`.
+1. **`dev` (Integration Branch)**:
+   * The default branch for active development.
+   * All feature branches, bug fixes, and chores branch from `dev` and merge back into `dev`.
 2. **`main` (Production Branch)**:
    * Holds the stable production release code.
-   * Periodically, `dev` is merged into `main` via a Pull Request.
+   * Periodically, `dev` is merged into `main` via a Release Pull Request.
 
 ### 🛡️ Branch Protection Rules
 
-Direct pushes to `main` and `dev` are strictly forbidden. Changes can only be merged via Pull Requests.
+* **Direct Pushes**: Direct pushes to `main` and `dev` are strictly forbidden. All changes must be delivered via Pull Requests.
+* **Review / Admin Merge**: PRs require review approval or an administrator merge override.
 
-* **Review Requirements**: All PRs must have at least **one approved review** from a reviewer before they can be merged.
-* **Admin Override**: A PR can be merged without reviews *only* if merged by an administrator (e.g., using the `--admin` bypass flag in the GitHub CLI).
+### 🛑 User Confirmation Gates (MANDATORY)
 
-### Working on a Feature, Bug Fix, or Change
+To prevent unwanted changes, maintain strict quality control, and ensure implementation matches user expectations:
+1. **Gate 1 — Before Opening a Pull Request**:
+   - The agent **MUST explicitly ask the user for confirmation** before calling `create_pull_request`.
+   - **Rationale**: The user may request additional modifications, want to review the diff/files first, or adjust scope before a PR is opened.
+2. **Gate 2 — Before Merging a Pull Request**:
+   - Even when CI checks succeed with `conclusion: "success"`, the agent **MUST explicitly ask the user for confirmation** before calling `merge_pull_request`.
+   - **Rationale**: The user must review the build/preview behavior and give explicit approval before integrating changes into `dev` or releasing to `main`.
 
-* **Issue Pre-requisite**: Before committing any changes, verify if a GitHub Issue exists for the work. **If an issue does NOT exist, create one first**:
+### 📋 Issue Pre-requisite & Closure Policy (MANDATORY)
 
-  ```bash
-  GITHUB_TOKEN= gh issue create --assignee <GITHUB_USERNAME> --project <GITHUB_PROJECT_NAME> --title "<summary>" --body "<description>"
+Before committing changes or starting work:
+* **Verify Existing Issues**: Check if an open GitHub Issue exists for the work using GitHub MCP `search_issues`.
+* **Create Issue First**: If an issue does NOT exist, you **MUST create one first** using GitHub MCP `issue_write`:
+  ```json
+  {
+    "ServerName": "github",
+    "ToolName": "issue_write",
+    "Arguments": {
+      "method": "create",
+      "owner": "thehavays",
+      "repo": "crucible-mcp-server",
+      "title": "<summary>",
+      "body": "<description>",
+      "assignees": ["thehavays"]
+    }
+  }
+  ```
+* **Link in Commits & PRs (`dev` Integration)**: Reference the issue using non-closing keywords like `ref #15` or `relates to #15` in commit messages and PR descriptions targeting `dev`.
+* **Issue Closure Policy (CRITICAL)**: **DO NOT CLOSE ANY ISSUE UNTIL MERGED TO `main`!**
+  - Feature and bugfix PRs merge into `dev`, which is our staging/integration branch. The issue represents work that is NOT yet live in production.
+  - Therefore, issues must **NEVER be closed when merged into `dev`**, neither automatically nor manually via `issue_write`.
+  - Closing keywords (`closes #...`, `resolves #...`, `fixes #...`) must ONLY be placed in the **Release PR description from `dev` to `main`**.
+  - Merging `dev` into `main` is the only event that resolves and closes GitHub issues.
+
+---
+
+## 🏷️ Branch Naming Conventions
+
+`<type>/<description-in-kebab-case>`
+
+* **Allowed types**:
+  * `feat/` — New feature or UI addition
+  * `fix/` — Bug fix or correction
+  * `chore/` — Dependency update, build config, or cleanup
+  * `docs/` — Documentation updates
+  * `refactor/` — Code refactoring without behavior change
+  * `perf/` — Performance optimization
+
+---
+
+## 📝 Commit Standards (Conventional Commits)
+
+`<type>(<scope>): <imperative summary>` or `<type>: <imperative summary>`
+
+* **Examples**:
+  * `feat: add crucible_add_comment tool`
+  * `fix: correct rss feed url interpolation`
+  * `chore: update dependencies`
+* **Disallowed**: Vague messages like `"fix"`, `"wip"`, `"update"`, `"changes"`.
+
+---
+
+## 🤖 GitHub MCP Tool Actions
+
+Agents interact with GitHub through MCP tool calls (`call_mcp_tool` with `ServerName: "github"`):
+
+### 1. Issues Management
+* **Search Existing Issues**:
+  ```json
+  {
+    "ServerName": "github",
+    "ToolName": "search_issues",
+    "Arguments": {
+      "query": "repo:thehavays/crucible-mcp-server is:open <keywords>"
+    }
+  }
+  ```
+* **Create an Issue**:
+  ```json
+  {
+    "ServerName": "github",
+    "ToolName": "issue_write",
+    "Arguments": {
+      "method": "create",
+      "owner": "thehavays",
+      "repo": "crucible-mcp-server",
+      "title": "<summary>",
+      "body": "<description>",
+      "assignees": ["thehavays"]
+    }
+  }
   ```
 
-* **Branch Creation**: Create and switch to a branch linked to the issue:
-
-  ```bash
-  git checkout dev
-  git pull
-  GITHUB_TOKEN= gh issue develop <issue_number> --base dev --checkout
+### 2. Pull Request Management
+* **Create Pull Request to `dev`**:
+  ```json
+  {
+    "ServerName": "github",
+    "ToolName": "create_pull_request",
+    "Arguments": {
+      "owner": "thehavays",
+      "repo": "crucible-mcp-server",
+      "title": "<type>: <title>",
+      "body": "<description referencing issue with ref #<issue_number> (DO NOT use closes #... on dev PRs)>",
+      "head": "feat/<branch-name>",
+      "base": "dev"
+    }
+  }
+  ```
+* **Create Release PR to `main`**:
+  ```json
+  {
+    "ServerName": "github",
+    "ToolName": "create_pull_request",
+    "Arguments": {
+      "owner": "thehavays",
+      "repo": "crucible-mcp-server",
+      "title": "release: merge dev to main",
+      "body": "<release notes, changelog, and list of closed issues with closes #<issue_number>>",
+      "head": "dev",
+      "base": "main"
+    }
+  }
+  ```
+* **Merge Pull Request**:
+  ```json
+  {
+    "ServerName": "github",
+    "ToolName": "merge_pull_request",
+    "Arguments": {
+      "owner": "thehavays",
+      "repo": "crucible-mcp-server",
+      "pullNumber": 1,
+      "merge_method": "merge"
+    }
+  }
   ```
 
 ---
 
-## 🔑 GitHub CLI (`gh`) & GITHUB_TOKEN Conflict
+## 🚀 Development & PR Step-by-Step Flow
 
-There is a conflict with the `GITHUB_TOKEN` environment variable in the shell environment.
-
-* **Problem**: The shell env has an invalid `GITHUB_TOKEN` set, which overrides your local authentication keyring.
-* **Rule**: When executing **any** `gh` CLI commands, you **must** prefix the command with `GITHUB_TOKEN=` to bypass the invalid environment token and use the working local credential manager.
-  * *Correct*: `GITHUB_TOKEN= gh pr create ...`
-  * *Incorrect*: `gh pr create ...`
-
----
-
-## 💬 Issue & PR Creation Conventions
-
-* **Assignee & Project Rules**: When creating a new Issue or Pull Request, **always** assign it to `GITHUB_USERNAME` and link it to `GITHUB_PROJECT_NAME`:
-  * **Creating an Issue**:
-
-    ```bash
-    GITHUB_TOKEN= gh issue create --assignee <GITHUB_USERNAME> --project <GITHUB_PROJECT_NAME> --title "..." --body "..."
-    ```
-
-  * **Creating a PR**:
-
-    ```bash
-    GITHUB_TOKEN= gh pr create --assignee <GITHUB_USERNAME> --project <GITHUB_PROJECT_NAME> --base dev --title "..." --body "..."
-    ```
-
-* **Commit messages**: Use semantic prefix naming conventions:
-  * `feat: ...` for new features (e.g. `feat: support pre-configuring Google Cloud OAuth credentials via env (closes #23)`).
-  * `fix: ...` for bug fixes.
-  * `chore: ...` for structural or auxiliary updates.
-* **PR Target**: Always direct your pull request to the `dev` branch.
-* **Syncing to Main**: Once features are stable in `dev`, open a PR from `dev` to `main` (`GITHUB_TOKEN= gh pr create --assignee <GITHUB_USERNAME> --project <GITHUB_PROJECT_NAME> --base main --head dev`).
-
----
-
-## 🏷️ Tagging & Releases
-
-When asked to create a tag/release:
-
-1. **Checkout the main branch** and pull the latest changes:
-
+### 1. Starting a Feature or Fix
+1. Switch to `dev` and pull latest changes:
    ```bash
-   git checkout main
-   git pull
+   git checkout dev
+   git pull origin dev
+   ```
+2. Verify or create the tracking issue via GitHub MCP (`search_issues` or `issue_write`).
+3. Create your task branch:
+   ```bash
+   git checkout -b feat/your-feature-name dev
    ```
 
-2. **Create the tag locally** (use semantic versioning, e.g., `v1.0.1`):
+### 2. Developing & Verifying
+1. Make focused changes.
+2. Run project verification gates (`npm run test`).
+3. Check status and staged diff (`git status`, `git diff`).
 
+### 3. Rebasing & Opening a Pull Request
+1. Rebase onto latest `dev`:
    ```bash
-   git tag -a v<version> -m "Release v<version>"
+   git fetch origin
+   git rebase origin/dev
+   git push origin feat/your-feature-name
    ```
+2. **Ask for User Confirmation (Mandatory)**: Present staged changes to the user and obtain explicit permission before opening the PR.
+3. Create Pull Request targeting `dev` via `create_pull_request`.
 
-3. **Push the tag to GitHub**:
-
-   ```bash
-   git push origin v<version>
-   ```
-
-4. **Create a GitHub release** from the tag:
-
-   ```bash
-   GITHUB_TOKEN= gh release create v<version> --title "Release v<version>" --generate-notes
-   ```
-
----
-
-## 💡 Git & GitHub Best Practices
-
-1. **Keep Feature Branches Up to Date**:
-   * Regularly pull updates from `dev` into your feature branch before creating a PR to resolve merge conflicts early:
-
-     ```bash
-     git fetch origin
-     git rebase origin/dev
-     ```
-
-2. **Automatic Issue Linking**:
-   * Always include closing keywords in commit messages or PR descriptions (e.g., `closes #23`, `resolves #45`). This links the PR to the issue on GitHub and automatically closes the issue when merged.
-3. **Branch Hygiene & Cleanup**:
-   * Clean up merged feature branches locally and remotely to avoid repository bloat:
-
-     ```bash
-     GITHUB_TOKEN= gh pr merge <pr_number> --merge -d
-     ```
-
-4. **Draft Pull Requests for Early Feedback**:
-   * If a feature is a work in progress and you want early code review or automated testing, create a draft PR:
-
-     ```bash
-     GITHUB_TOKEN= gh pr create --draft --base dev
-     ```
+### 4. Merging & Release to Production (`main`)
+1. Wait for CI checks to pass.
+2. **Ask for User Confirmation (Mandatory)**: Present check results to user and obtain permission before merge.
+3. Merge PR into `dev` via `merge_pull_request`.
+4. When releasing:
+   - Ask for user approval before opening release PR from `dev` to `main`.
+   - Open Release PR via `create_pull_request` (listing `closes #...`).
+   - Ask for user approval before merging.
+   - Merge into `main` via `merge_pull_request`.
