@@ -1,16 +1,22 @@
 {
-  "name": "vestel-crucible-mcp",
+  "name": "crucible-mcp-server",
   "version": "1.0.0",
-  "description": "Fisheye + Crucible Model Context Protocol (MCP) server for Vestel",
+  "description": "Fisheye + Crucible Model Context Protocol (MCP) server",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "vestel-crucible-mcp": "./index.js"
+    "crucible-mcp-server": "./index.js"
   },
   "scripts": {
     "start": "node index.js",
     "test": "vitest run"
   },
+  "files": [
+    "index.js",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.4.1",
     "axios": "^1.7.9",

@@ -30,24 +30,26 @@ if (fs.existsSync(configPath)) {
   console.warn("No .crucible-config.json found. You can set CRUCIBLE_USERNAME, CRUCIBLE_PASSWORD, CRUCIBLE_URL environment variables.");
 }
 
-const CRUCIBLE_URL = process.env.CRUCIBLE_URL || config.baseUrl || "https://rdreview.vestel.com.tr";
+const CRUCIBLE_URL = process.env.CRUCIBLE_URL || config.baseUrl;
 const USERNAME = process.env.CRUCIBLE_USERNAME || config.username;
 const PASSWORD = process.env.CRUCIBLE_PASSWORD || config.password;
 const TOKEN = process.env.CRUCIBLE_API_TOKEN || config.token;
 
-if (!CRUCIBLE_URL) {
-  console.error("CRUCIBLE_URL is not set.");
-  process.exit(1);
-}
+if (process.env.NODE_ENV !== "test") {
+  if (!CRUCIBLE_URL) {
+    console.error("CRUCIBLE_URL is not set. Please set CRUCIBLE_URL environment variable or baseUrl in .crucible-config.json.");
+    process.exit(1);
+  }
 
-if (!(USERNAME && PASSWORD) && !TOKEN) {
-  console.error("Authentication not provided (need either USERNAME and PASSWORD or TOKEN).");
-  process.exit(1);
+  if (!(USERNAME && PASSWORD) && !TOKEN) {
+    console.error("Authentication not provided (need either USERNAME and PASSWORD or TOKEN).");
+    process.exit(1);
+  }
 }
 
 // Create axios instance
 const api = axios.create({
-  baseURL: `${CRUCIBLE_URL}/rest-service`,
+  baseURL: `${CRUCIBLE_URL || "http://localhost:8060"}/rest-service`,
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -62,12 +64,12 @@ if (TOKEN) {
 }
 
 /**
- * Vestel Crucible MCP Server Configuration
+ * Crucible MCP Server Configuration
  * Defines the main server instance with its capabilities.
  */
 const server = new Server(
   {
-    name: "vestel-crucible-mcp",
+    name: "crucible-mcp-server",
     version: "1.0.0",
   },
   {
@@ -157,28 +159,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             reviewId: {
               type: "string",
-              description: "The ID of the review (e.g., 'CR-123' or 'CRU-BUTTERFLY-156')."
+              description: "The ID of the review (e.g., 'CR-123' or 'CRU-BUTTERFLY-156').",
             },
             message: {
               type: "string",
-              description: "The text content of the comment."
+              description: "The text content of the comment.",
             },
             reviewItemId: {
               type: "string",
-              description: "Optional PermId of the review item (file) to attach the comment to (e.g., 'CFR-868035'). If omitted, a general review comment is created."
+              description: "Optional PermId of the review item (file) to attach the comment to (e.g., 'CFR-868035'). If omitted, a general review comment is created.",
             },
             lineRange: {
               type: "string",
-              description: "Optional line number or range for an in-line comment (e.g. '25662' or '25660-25668'). Applicable when reviewItemId is provided."
+              description: "Optional line number or range for an in-line comment (e.g. '25662' or '25660-25668'). Applicable when reviewItemId is provided.",
             },
             revision: {
               type: "string",
-              description: "Optional commit/file revision string associated with the lineRange (e.g. '49898'). If omitted and lineRange is provided, the latest revision of the review item is automatically resolved."
-            }
+              description: "Optional commit/file revision string associated with the lineRange (e.g. '49898'). If omitted and lineRange is provided, the latest revision of the review item is automatically resolved.",
+            },
+            toLineRange: {
+              type: "string",
+              description: "Optional line number or range in the new file revision (e.g., '42' or '40-45'). Applicable when reviewItemId is provided.",
+            },
+            fromLineRange: {
+              type: "string",
+              description: "Optional line number or range in the old file revision (e.g., '40'). Applicable when reviewItemId is provided.",
+            },
           },
           required: ["reviewId", "message"],
         },
-      }
+      },
     ],
   };
 });
@@ -194,7 +204,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const viewParam = isCommits ? "fe" : "cru";
 
         // Fetch RSS feed using full URL to bypass baseURL
-        const response = await api.get(`https://rdreview.vestel.com.tr/changelog/${project}?view=${viewParam}&max=${limit}&RSS=true`);
+        const response = await api.get(`${CRUCIBLE_URL}/changelog/${project}?view=${viewParam}&max=${limit}&RSS=true`);
         
         const xmlData = response.data;
         const result = await parseStringPromise(xmlData);
@@ -312,10 +322,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "crucible_add_comment": {
-        const reviewId = request.params.arguments?.reviewId;
-        const message = request.params.arguments?.message;
-        const reviewItemId = request.params.arguments?.reviewItemId;
-        const lineRange = request.params.arguments?.lineRange;
+        const { reviewId, message, reviewItemId, lineRange, toLineRange, fromLineRange } = request.params.arguments || {};
         let revision = request.params.arguments?.revision;
 
         if (!reviewId || !message) {
@@ -328,7 +335,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (reviewItemId) {
           commentType = "In-line File Comment";
           const payload = {
-            message: message,
+            message: String(message),
             draft: true, // Always created as draft
           };
 
@@ -354,17 +361,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             ];
           }
 
-          response = await api.post(`/reviews-v1/${reviewId}/reviewitems/${reviewItemId}/comments`, payload);
+          if (toLineRange) payload.toLineRange = String(toLineRange);
+          if (fromLineRange) payload.fromLineRange = String(fromLineRange);
+
+          response = await api.post(`/reviews-v1/${encodeURIComponent(reviewId)}/reviewitems/${encodeURIComponent(reviewItemId)}/comments`, payload);
         } else {
           const payload = {
-            message: message,
+            message: String(message),
             draft: true, // Always created as draft
           };
-          response = await api.post(`/reviews-v1/${reviewId}/comments`, payload);
+          response = await api.post(`/reviews-v1/${encodeURIComponent(reviewId)}/comments`, payload);
         }
 
         const commentData = response.data;
-        const commentId = commentData?.permaId?.id || commentData?.permaId || "Unknown";
+        const commentId = commentData?.permaId?.id || commentData?.permaId || commentData?.messageId || "created";
 
         let resultText = `Successfully created draft comment on review ${reviewId}.\n`;
         resultText += `- Comment ID: ${commentId}\n`;
@@ -373,6 +383,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (reviewItemId) resultText += `- Review Item ID: ${reviewItemId}\n`;
         if (lineRange) resultText += `- Line Range: ${lineRange}\n`;
         if (revision) resultText += `- Revision: ${revision}\n`;
+        if (toLineRange) resultText += `- To Line Range: ${toLineRange}\n`;
+        if (fromLineRange) resultText += `- From Line Range: ${fromLineRange}\n`;
         resultText += `\nMessage:\n${message}\n`;
 
         return {
@@ -405,6 +417,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("Vestel Crucible MCP Server running on stdio");
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Crucible MCP Server running on stdio");
+}
+
+if (process.env.NODE_ENV !== "test") {
+  main().catch((error) => {
+    console.error("Fatal error in main:", error);
+    process.exit(1);
+  });
+}
+
+export { server, api };
