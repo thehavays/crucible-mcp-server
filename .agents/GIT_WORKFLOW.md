@@ -1,11 +1,11 @@
-# Git & GitHub Workflow Guidelines for Vestel Crucible MCP
+# Git & GitHub Workflow Guidelines for Crucible MCP Server
 
 ---
 
 ## ⚙️ Environment Variables (Context)
 
 * **GITHUB_USERNAME**: `thehavays`
-* **GITHUB_PROJECT_NAME**: `Vestel Crucible MCP`
+* **GITHUB_PROJECT_NAME**: `Crucible MCP Server`
 
 ---
 

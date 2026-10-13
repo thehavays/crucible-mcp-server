@@ -30,24 +30,26 @@ if (fs.existsSync(configPath)) {
   console.warn("No .crucible-config.json found. You can set CRUCIBLE_USERNAME, CRUCIBLE_PASSWORD, CRUCIBLE_URL environment variables.");
 }
 
-const CRUCIBLE_URL = process.env.CRUCIBLE_URL || config.baseUrl || "https://rdreview.vestel.com.tr";
+const CRUCIBLE_URL = process.env.CRUCIBLE_URL || config.baseUrl;
 const USERNAME = process.env.CRUCIBLE_USERNAME || config.username;
 const PASSWORD = process.env.CRUCIBLE_PASSWORD || config.password;
 const TOKEN = process.env.CRUCIBLE_API_TOKEN || config.token;
 
-if (!CRUCIBLE_URL) {
-  console.error("CRUCIBLE_URL is not set.");
-  process.exit(1);
-}
+if (process.env.NODE_ENV !== "test") {
+  if (!CRUCIBLE_URL) {
+    console.error("CRUCIBLE_URL is not set. Please set CRUCIBLE_URL environment variable or baseUrl in .crucible-config.json.");
+    process.exit(1);
+  }
 
-if (!(USERNAME && PASSWORD) && !TOKEN) {
-  console.error("Authentication not provided (need either USERNAME and PASSWORD or TOKEN).");
-  process.exit(1);
+  if (!(USERNAME && PASSWORD) && !TOKEN) {
+    console.error("Authentication not provided (need either USERNAME and PASSWORD or TOKEN).");
+    process.exit(1);
+  }
 }
 
 // Create axios instance
 const api = axios.create({
-  baseURL: `${CRUCIBLE_URL}/rest-service`,
+  baseURL: `${CRUCIBLE_URL || "http://localhost:8060"}/rest-service`,
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -62,12 +64,12 @@ if (TOKEN) {
 }
 
 /**
- * Vestel Crucible MCP Server Configuration
+ * Crucible MCP Server Configuration
  * Defines the main server instance with its capabilities.
  */
 const server = new Server(
   {
-    name: "vestel-crucible-mcp",
+    name: "crucible-mcp-server",
     version: "1.0.0",
   },
   {
@@ -148,7 +150,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["reviewId"],
         },
-      }
+      },
+      {
+        name: "crucible_add_comment",
+        description: "Add a review or inline file comment to a Crucible review. All comments are strictly created in draft mode (draft: true).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            reviewId: {
+              type: "string",
+              description: "The ID of the review (e.g., 'CR-123').",
+            },
+            message: {
+              type: "string",
+              description: "The text content of the comment.",
+            },
+            reviewItemId: {
+              type: "string",
+              description: "Optional review item ID (e.g., 'CFR-123') for file/inline comments. If omitted, adds a general review comment.",
+            },
+            toLineRange: {
+              type: "string",
+              description: "Optional line number or range in the new file revision (e.g., '42' or '40-45'). Only applicable when reviewItemId is provided.",
+            },
+            fromLineRange: {
+              type: "string",
+              description: "Optional line number or range in the old file revision (e.g., '40'). Only applicable when reviewItemId is provided.",
+            },
+          },
+          required: ["reviewId", "message"],
+        },
+      },
     ],
   };
 });
@@ -164,7 +196,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const viewParam = isCommits ? "fe" : "cru";
 
         // Fetch RSS feed using full URL to bypass baseURL
-        const response = await api.get(`https://rdreview.vestel.com.tr/changelog/${project}?view=${viewParam}&max=${limit}&RSS=true`);
+        const response = await api.get(`${CRUCIBLE_URL}/changelog/${project}?view=${viewParam}&max=${limit}&RSS=true`);
         
         const xmlData = response.data;
         const result = await parseStringPromise(xmlData);
@@ -281,6 +313,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "crucible_add_comment": {
+        const { reviewId, message, reviewItemId, toLineRange, fromLineRange } = request.params.arguments || {};
+
+        if (!reviewId) {
+          throw new Error("reviewId is required.");
+        }
+        if (!message) {
+          throw new Error("message is required.");
+        }
+
+        // Strictly enforce draft mode
+        const payload = {
+          message: String(message),
+          draft: true,
+        };
+
+        let endpoint;
+        if (reviewItemId) {
+          endpoint = `/reviews-v1/${encodeURIComponent(reviewId)}/reviewitems/${encodeURIComponent(reviewItemId)}/comments`;
+          if (toLineRange) payload.toLineRange = String(toLineRange);
+          if (fromLineRange) payload.fromLineRange = String(fromLineRange);
+        } else {
+          endpoint = `/reviews-v1/${encodeURIComponent(reviewId)}/comments`;
+        }
+
+        const response = await api.post(endpoint, payload);
+        const commentData = response.data;
+        const commentId = commentData?.permaId?.id || commentData?.messageId || "created";
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Comment successfully created in draft mode (draft: true) for review ${reviewId}${reviewItemId ? ` on file item ${reviewItemId}` : " (general)"}.\nComment ID: ${commentId}`,
+            },
+          ],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${request.params.name}`);
     }
@@ -301,6 +372,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("Vestel Crucible MCP Server running on stdio");
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Crucible MCP Server running on stdio");
+}
+
+if (process.env.NODE_ENV !== "test") {
+  main().catch((error) => {
+    console.error("Fatal error in main:", error);
+    process.exit(1);
+  });
+}
+
+export { server, api };

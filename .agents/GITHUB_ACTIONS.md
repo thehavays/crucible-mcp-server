@@ -1,10 +1,10 @@
-# GitHub Actions & CI/CD Guidelines for Vestel Crucible MCP
+# GitHub Actions & CI/CD Guidelines for Crucible MCP Server
 
 ---
 
 ## ⚙️ Environment Variables (Context)
 * **GITHUB_USERNAME**: `thehavays`
-* **GITHUB_PROJECT_NAME**: `vestel-crucible-mcp`
+* **GITHUB_PROJECT_NAME**: `crucible-mcp-server`
 
 ---
 

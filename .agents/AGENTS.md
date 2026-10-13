@@ -1,12 +1,12 @@
-# Project Guidelines & Developer Onboarding for Vestel Crucible MCP
+# Project Guidelines & Developer Onboarding for Crucible MCP Server
 
-This document is a comprehensive guide for AI agents and developers to understand, find, and develop the `vestel-crucible-mcp` Node.js application.
+This document is a comprehensive guide for AI agents and developers to understand, find, and develop the `crucible-mcp-server` Node.js application.
 
 ---
 
 ## 📖 Project Summary
 
-**Vestel Crucible MCP** is a Model Context Protocol (MCP) server for integrating with Crucible. It provides tools and resources to interact with Crucible issues, users, and projects through the MCP protocol.
+**Crucible MCP Server** is a Model Context Protocol (MCP) server for integrating with Crucible. It provides tools and resources to interact with Crucible issues, users, and projects through the MCP protocol.
 
 ### Key Technologies
 - **Framework**: Node.js (ES Modules)
@@ -20,7 +20,7 @@ This document is a comprehensive guide for AI agents and developers to understan
 
 The project code is a standard Node.js package structure:
 
-* **[vestel-crucible-mcp/](../)**: Root folder of the repository.
+* **[crucible-mcp-server/](../)**: Root folder of the repository.
   * **[index.js](../index.js)**: Contains the main logic and entry point for the MCP server.
   * **[tests/](../tests)**: Contains vitest unit tests.
   * **[scripts/](../scripts)**: Contains helper scripts for development (e.g., mock fetching).

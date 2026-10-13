@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-describe('Vestel Crucible MCP Server', () => {
+describe('Crucible MCP Server', () => {
   it('should have index.js entry point', () => {
     const indexPath = path.join(__dirname, '../index.js');
     expect(fs.existsSync(indexPath)).toBe(true);
@@ -14,5 +14,11 @@ describe('Vestel Crucible MCP Server', () => {
     expect(code).toContain('name: "crucible_get_recent_commits"');
     expect(code).toContain('name: "crucible_get_file_diff"');
     expect(code).toContain('name: "crucible_get_review_details"');
+    expect(code).toContain('name: "crucible_add_comment"');
+  });
+
+  it('should enforce draft: true mode for crucible_add_comment', () => {
+    const code = fs.readFileSync(path.join(__dirname, '../index.js'), 'utf-8');
+    expect(code).toContain('draft: true');
   });
 });
